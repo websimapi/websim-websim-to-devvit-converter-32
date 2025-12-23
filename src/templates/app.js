@@ -83,22 +83,6 @@ async function fetchAllData() {
 // --- API Routes (Client -> Server) ---
 // Note: All client-callable endpoints must start with /api/
 
-router.post('/api/json/:key', async (req, res) => {
-    const { key } = req.params;
-    const data = req.body;
-    await redis.set(`json:${key}`, JSON.stringify(data));
-    res.json({ ok: true, url: `/api/json/${key}` });
-});
-
-router.get('/api/json/:key', async (req, res) => {
-    const { key } = req.params;
-    const raw = await redis.get(`json:${key}`);
-    if (!raw) {
-        return res.status(404).json({ error: 'Not found' });
-    }
-    res.json(JSON.parse(raw));
-});
-
 router.get('/api/init', async (_req, res) => {
     const data = await fetchAllData();
     res.json(data);
@@ -144,6 +128,35 @@ router.post('/api/delete', async (req, res) => {
         res.json({ success: true, collection, key });
     } catch(e) {
         console.error('DB Delete Error:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// --- JSON "File" Upload Routes (Redis-backed) ---
+router.post('/api/json/:key', async (req, res) => {
+    try {
+        const { key } = req.params;
+        const data = req.body;
+        // Persist JSON to Redis
+        await redis.set('json:' + key, JSON.stringify(data));
+        res.json({ ok: true, url: '/api/json/' + key });
+    } catch(e) {
+        console.error('JSON Upload Error:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+router.get('/api/json/:key', async (req, res) => {
+    try {
+        const { key } = req.params;
+        const data = await redis.get('json:' + key);
+        if (!data) return res.status(404).json({ error: 'Not found' });
+        
+        // Return as proper JSON
+        res.header('Content-Type', 'application/json');
+        res.send(data);
+    } catch(e) {
+        console.error('JSON Load Error:', e);
         res.status(500).json({ error: e.message });
     }
 });

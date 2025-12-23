@@ -50,7 +50,6 @@ export const generateDevvitJson = (slug) => JSON.stringify({
   },
   "permissions": {
     "redis": true,
-    "media": true,
     "reddit": {
       "enable": true,
       "asUser": ["SUBMIT_POST", "SUBMIT_COMMENT"]

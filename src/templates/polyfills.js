@@ -447,33 +447,45 @@ export const websimStubsJs = `
                     filter: () => ({ subscribe: () => {}, getList: () => [] })
                 };
             },
-            upload: async (blob) => {
-                // 1. JSON Persistence (Save Files / Levels)
-                // We hijack JSON uploads to store them in Redis, allowing persistent "save files"
-                if (blob.type.includes('json') || blob.type.includes('text')) {
-                    try {
-                        const text = await blob.text();
-                        // Verify valid JSON
-                        JSON.parse(text);
+            upload: async (file) => {
+                // Smart Upload: JSON persistence via Redis, Media via BlobURL (session)
+                try {
+                    let isJson = file.type === 'application/json' || (file.name && file.name.endsWith('.json'));
+                    
+                    if (!isJson && (!file.type || file.type === 'text/plain')) {
+                        try {
+                            // Quick sniff for JSON content
+                            const text = await file.text();
+                            const trimmed = text.trim();
+                            if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+                                JSON.parse(trimmed);
+                                isJson = true;
+                            }
+                        } catch(e) {}
+                    }
+
+                    if (isJson) {
+                        const text = await file.text();
+                        const data = JSON.parse(text);
+                        // Generate ID
+                        const key = 'up_' + Math.random().toString(36).substr(2, 9);
                         
-                        const key = Math.random().toString(36).substring(2, 15);
-                        const res = await fetch('/api/json/' + key, {
+                        // Upload to our custom JSON route
+                        await fetch('/api/json/' + key, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: text
+                            body: JSON.stringify(data)
                         });
                         
-                        if (res.ok) {
-                            return '/api/json/' + key;
-                        }
-                    } catch(e) {
-                        console.warn('[WebSim] JSON Upload fallback:', e);
+                        return '/api/json/' + key;
                     }
+                    
+                    // Fallback to Blob URL for images/audio (Session only)
+                    return URL.createObjectURL(file);
+                } catch(e) { 
+                    console.error("Upload failed", e);
+                    return ''; 
                 }
-                
-                // 2. Fallback for Images/Media
-                // Note: These are temporary and won't persist after reload unless using Devvit Forms
-                try { return URL.createObjectURL(blob); } catch(e) { return ''; }
             }
         };
     }
