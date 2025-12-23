@@ -448,6 +448,31 @@ export const websimStubsJs = `
                 };
             },
             upload: async (blob) => {
+                // 1. JSON Persistence (Save Files / Levels)
+                // We hijack JSON uploads to store them in Redis, allowing persistent "save files"
+                if (blob.type.includes('json') || blob.type.includes('text')) {
+                    try {
+                        const text = await blob.text();
+                        // Verify valid JSON
+                        JSON.parse(text);
+                        
+                        const key = Math.random().toString(36).substring(2, 15);
+                        const res = await fetch('/api/json/' + key, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: text
+                        });
+                        
+                        if (res.ok) {
+                            return '/api/json/' + key;
+                        }
+                    } catch(e) {
+                        console.warn('[WebSim] JSON Upload fallback:', e);
+                    }
+                }
+                
+                // 2. Fallback for Images/Media
+                // Note: These are temporary and won't persist after reload unless using Devvit Forms
                 try { return URL.createObjectURL(blob); } catch(e) { return ''; }
             }
         };

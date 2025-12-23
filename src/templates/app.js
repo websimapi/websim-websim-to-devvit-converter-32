@@ -83,6 +83,22 @@ async function fetchAllData() {
 // --- API Routes (Client -> Server) ---
 // Note: All client-callable endpoints must start with /api/
 
+router.post('/api/json/:key', async (req, res) => {
+    const { key } = req.params;
+    const data = req.body;
+    await redis.set(`json:${key}`, JSON.stringify(data));
+    res.json({ ok: true, url: `/api/json/${key}` });
+});
+
+router.get('/api/json/:key', async (req, res) => {
+    const { key } = req.params;
+    const raw = await redis.get(`json:${key}`);
+    if (!raw) {
+        return res.status(404).json({ error: 'Not found' });
+    }
+    res.json(JSON.parse(raw));
+});
+
 router.get('/api/init', async (_req, res) => {
     const data = await fetchAllData();
     res.json(data);
