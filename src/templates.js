@@ -7,6 +7,8 @@ export * from './templates/polyfills.js';
 export * from './templates/scripts.js';
 export * from './templates/docs.js';
 
+// Removed blobPolyfill (deprecated/non-compliant)
+// Removed blobPolyfill (deprecated/non-compliant)
 // removed generatePackageJson(slug)
 // removed generateDevvitJson(slug)
 // removed tsConfig

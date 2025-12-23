@@ -119,6 +119,8 @@ export const webAudioPolyfill = `
     const unlockEvents = ['click', 'touchstart', 'keydown', 'mousedown'];
     const unlockFn = () => {
         if (unlocked) return;
+        
+        // Resume AudioContexts on interaction
         unlocked = true;
         console.log("[Audio] Unlocking Audio Contexts...");
         contexts.forEach(ctx => {
@@ -131,10 +133,10 @@ export const webAudioPolyfill = `
     // 4. Visibility Handling (Reddit Rule: Mute when hidden)
     document.addEventListener('visibilitychange', () => {
         if (document.hidden) {
-            console.log("[Audio] App hidden, suspending...");
+            // Mute
             contexts.forEach(ctx => ctx.suspend().catch(() => {}));
         } else {
-            console.log("[Audio] App visible, resuming...");
+            // Resume only if already unlocked by user
             if (unlocked) {
                 contexts.forEach(ctx => {
                     if (ctx.state === 'suspended') ctx.resume().catch(() => {});
@@ -431,24 +433,28 @@ export const websimStubsJs = `
                     await new Promise(r => setTimeout(r, 100));
                     tries++;
                 }
+                // Fallback to Guest if no identity received
                 return _currentUser || {
                     id: 'guest', username: 'Guest', avatar_url: 'https://www.redditstatic.com/avatars/avatar_default_02_FF4500.png'
                 };
             },
             getProject: async () => ({ id: 'local', title: 'Reddit Game' }),
             collection: (name) => {
-                // Return safe stubs to prevent crashes before hydration
                 return window.websimSocketInstance ? window.websimSocketInstance.collection(name) : {
-                    subscribe: () => {}, 
-                    getList: () => [], 
-                    create: async () => {}, 
-                    update: async () => {}, 
-                    delete: async () => {}, 
-                    filter: () => ({ subscribe: () => {}, getList: () => [] })
+                    subscribe: () => {}, getList: () => [], create: async () => {}, update: async () => {}, delete: async () => {}, filter: () => ({ subscribe: () => {}, getList: () => [] })
                 };
             },
+            // [Devvit] Proper handling of uploads:
+            // Dynamic uploads are transient in Devvit Webview. 
+            // We return a Blob URL for display, but note that 'fetch(blobUrl)' will fail due to CSP.
             upload: async (blob) => {
-                try { return URL.createObjectURL(blob); } catch(e) { return ''; }
+                try { 
+                    // Create object URL for <img> or <audio> src
+                    return URL.createObjectURL(blob); 
+                } catch(e) { 
+                    console.warn('[WebSim] Upload stub failed:', e);
+                    return ''; 
+                }
             }
         };
     }
@@ -480,55 +486,5 @@ export const upload = w.upload;
 export const collection = w.collection;
 `;
 
-export const blobPolyfill = `
-// [WebSim] Blob & Fetch Polyfill - Fixes CSP issues with blob: URLs
-(function() {
-    console.log("[Polyfill] Initializing Blob/Fetch interceptor...");
-    
-    const _createObjectURL = URL.createObjectURL;
-    const _revokeObjectURL = URL.revokeObjectURL;
-    const _fetch = window.fetch;
-    
-    // Registry to map blob: URLs back to their original Blob objects
-    const blobRegistry = new Map();
 
-    URL.createObjectURL = function(blob) {
-        const url = _createObjectURL.call(URL, blob);
-        if (blob instanceof Blob) {
-            blobRegistry.set(url, blob);
-        }
-        return url;
-    };
-
-    URL.revokeObjectURL = function(url) {
-        blobRegistry.delete(url);
-        _revokeObjectURL.call(URL, url);
-    };
-
-    window.fetch = async function(input, init) {
-        let url = input;
-        if (input instanceof Request) {
-            url = input.url;
-        }
-
-        // Check if this is a tracked blob URL
-        if (typeof url === 'string' && url.startsWith('blob:') && blobRegistry.has(url)) {
-            console.log("[Polyfill] Intercepting blob fetch:", url);
-            const blob = blobRegistry.get(url);
-            
-            // Return a Response object wrapping the blob
-            return new Response(blob, {
-                status: 200,
-                statusText: 'OK',
-                headers: new Headers({
-                    'Content-Type': blob.type || 'application/octet-stream',
-                    'Content-Length': blob.size.toString()
-                })
-            });
-        }
-
-        return _fetch.call(window, input, init);
-    };
-})();
-`;
 
