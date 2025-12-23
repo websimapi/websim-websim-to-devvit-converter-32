@@ -157,11 +157,6 @@ export class AssetAnalyzer {
     processJS(jsContent, filename = 'script.js') {
         let code = uint8ToString(jsContent);
 
-        // 1. Identity Hotswap: Replace WebSim avatar URL strings with the client-side user variable
-        // This handles cases like `const src = "https://images.websim.ai/avatar/" + user.username`
-        // We replace the literal base with the Reddit equivalent or code that uses the Devvit user object
-        code = code.replace(/["']https:\/\/images\.websim\.(ai|com)\/avatar\/["']/g, '(window._currentUser?.avatar_url || "https://www.redditstatic.com/avatars/avatar_default_02_FF4500.png")');
-
         // React/JSX Detection: Ensure dependencies are tracked if JSX is present
         if (/<[A-Z][A-Za-z0-9]*[\s>]/g.test(code) || /className=/g.test(code)) {
             if (!this.dependencies['react']) this.dependencies['react'] = '^18.2.0';
@@ -194,6 +189,13 @@ export class AssetAnalyzer {
             const rewritePaths = (node) => {
                 if (node.type === 'Literal' && typeof node.value === 'string') {
                     const val = node.value;
+
+                    // Identity Hotswap: Replace WebSim avatar URL base strings
+                    if (val === "https://images.websim.ai/avatar/" || val === "https://images.websim.com/avatar/") {
+                        magic.overwrite(node.start, node.end, '(window._currentUser?.avatar_url || "https://www.redditstatic.com/avatars/avatar_default_02_FF4500.png")');
+                        hasChanges = true;
+                        return;
+                    }
 
                     // 1. Check URL Map (Exact Match for external or remapped assets)
                     if (this.urlMap.has(val)) {
@@ -263,11 +265,6 @@ export class AssetAnalyzer {
 
         } catch (e) {
             // Regex Fallback for JSX or syntax errors (Acorn fails on JSX)
-            // Matches:
-            // 1. import ... from "..."
-            // 2. import "..."
-            // 3. export ... from "..."
-            // 4. import("...") (dynamic)
             const importRegex = /(import\s+(?:[\w\s{},*]+)\s+from\s+['"])([^'"]+)(['"])|(import\s+['"])([^'"]+)(['"])|(from\s+['"])([^'"]+)(['"])|(import\s*\(\s*['"])([^'"]+)(['"]\s*\))/g;
             let match;
             const originalCode = code; 
@@ -285,6 +282,14 @@ export class AssetAnalyzer {
                         hasChanges = true;
                     }
                 }
+            }
+
+            // Identity Hotswap Fallback (Regex based for JSX files)
+            const avatarRegex = /(["'])(https:\/\/images\.websim\.(ai|com)\/avatar\/)\1/g;
+            let avatarMatch;
+            while ((avatarMatch = avatarRegex.exec(originalCode)) !== null) {
+                magic.overwrite(avatarMatch.index, avatarMatch.index + avatarMatch[0].length, '(window._currentUser?.avatar_url || "https://www.redditstatic.com/avatars/avatar_default_02_FF4500.png")');
+                hasChanges = true;
             }
         }
 

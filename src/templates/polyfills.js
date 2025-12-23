@@ -124,7 +124,9 @@ export const webAudioPolyfill = `
         unlocked = true;
         console.log("[Audio] Unlocking Audio Contexts...");
         contexts.forEach(ctx => {
-            if (ctx.state === 'suspended') ctx.resume().catch(e => console.warn(e));
+            if (ctx.state === 'suspended') {
+                ctx.resume().catch(e => console.warn(e));
+            }
         });
         unlockEvents.forEach(e => window.removeEventListener(e, unlockFn));
     };
@@ -134,12 +136,16 @@ export const webAudioPolyfill = `
     document.addEventListener('visibilitychange', () => {
         if (document.hidden) {
             // Mute
-            contexts.forEach(ctx => ctx.suspend().catch(() => {}));
+            contexts.forEach(ctx => {
+                ctx.suspend().catch(() => {});
+            });
         } else {
             // Resume only if already unlocked by user
             if (unlocked) {
                 contexts.forEach(ctx => {
-                    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+                    if (ctx.state === 'suspended') {
+                        ctx.resume().catch(() => {});
+                    }
                 });
             }
         }
