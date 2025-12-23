@@ -114,6 +114,13 @@ files.forEach(fileObj => {
              console.warn(\`⚠️  Dangerous 'eval()' usage detected in \${f}. This will likely be blocked by CSP.\`);
              issues++;
         }
+
+        // Check for fetch(blob:)
+        if (content.match(/fetch\s*\(\s*['"]?blob:/i)) {
+             console.error(\`❌ Prohibited 'fetch(blob:)' usage in \${f}.\`);
+             console.error(\`   Devvit CSP blocks blob: URL fetching. Use blob.arrayBuffer() directly instead.\`);
+             issues++;
+        }
     }
 });
 

@@ -53,32 +53,20 @@ async function fetchAllData() {
                 };
             }
             
-            // Proper Identity Hotswap:
-            // 1. Get Reddit user from backend
-            // 2. Fetch Snoovatar or Avatar
-            // 3. Return as standardized object for client to use
+            // Always try to fetch rich profile for snoovatar
             const currUser = await reddit.getCurrentUser();
-            
             if (currUser) {
-                let snoovatarUrl = null;
+                let snoovatarUrl;
                 try {
-                    // Try to get Snoovatar (available on some user objects)
                     snoovatarUrl = await currUser.getSnoovatarUrl();
-                } catch(e) { /* ignore */ }
-                
-                if (!snoovatarUrl) {
-                    try {
-                        // Fallback to static avatar url construction if method fails
-                        // Note: Real Reddit API usually provides this via snoovatarUrl
-                        snoovatarUrl = `https://www.redditstatic.com/avatars/avatar_default_02_FF4500.png`;
-                    } catch(e) {}
+                } catch(e) {
+                    try { snoovatarUrl = await reddit.getSnoovatarUrl(currUser.username); } catch(e2) {}
                 }
 
                 user = {
                     id: currUser.id,
                     username: currUser.username,
-                    // Use Reddit avatar, fallback to default
-                    avatar_url: snoovatarUrl || 'https://www.redditstatic.com/avatars/avatar_default_02_FF4500.png'
+                    avatar_url: snoovatarUrl || user.avatar_url
                 };
             }
         } catch(e) { 

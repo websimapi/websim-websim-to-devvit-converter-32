@@ -1,6 +1,6 @@
-import * as acorn from 'acorn';
-import { simple as walkSimple } from 'acorn-walk';
-import MagicString from 'magic-string';
+import * as acorn from 'https://esm.sh/acorn@8.11.3';
+import { simple as walkSimple } from 'https://esm.sh/acorn-walk@8.3.2';
+import MagicString from 'https://esm.sh/magic-string@0.30.5';
 
 // Helper: Clean Filename
 export const cleanName = (name) => {
@@ -163,7 +163,10 @@ export class AssetAnalyzer {
             if (!this.dependencies['react-dom']) this.dependencies['react-dom'] = '^18.2.0';
         }
         
-        // (Removed old regex replacements to prevent conflict with AST transformation below)
+        // Generic WebSim URL Replacements (Fix CSP issues & Hot-swap Identity)
+        code = code.replace(/https:\/\/images\.websim\.ai\/avatar\/|https:\/\/images\.websim\.com\/avatar\//g, 'https://www.redditstatic.com/avatars/avatar_default_02_FF4500.png?user=');
+        // Replace full literal avatar strings if found
+        code = code.replace(/["']https:\/\/images\.websim\.(ai|com)\/avatar\/[^"']+["']/g, '"https://www.redditstatic.com/avatars/avatar_default_02_FF4500.png"');
 
         // Calculate relative path to root for asset corrections
         const depth = (filename.match(/\//g) || []).length;
@@ -189,13 +192,6 @@ export class AssetAnalyzer {
             const rewritePaths = (node) => {
                 if (node.type === 'Literal' && typeof node.value === 'string') {
                     const val = node.value;
-
-                    // Identity Hotswap: Replace WebSim avatar URL base strings
-                    if (val === "https://images.websim.ai/avatar/" || val === "https://images.websim.com/avatar/") {
-                        magic.overwrite(node.start, node.end, '(window._currentUser?.avatar_url || "https://www.redditstatic.com/avatars/avatar_default_02_FF4500.png")');
-                        hasChanges = true;
-                        return;
-                    }
 
                     // 1. Check URL Map (Exact Match for external or remapped assets)
                     if (this.urlMap.has(val)) {
@@ -231,33 +227,24 @@ export class AssetAnalyzer {
                 },
                 Literal: rewritePaths,
                 TemplateLiteral: (node) => {
-                    // Smart Swap: Detect Avatar URLs constructed via template literals
-                    // Pattern: `https://images.websim.ai/avatar/${username}`
-                    if (node.quasis.length >= 1) {
+                    // Smart Swap: Detect Avatar URLs (either original WebSim or Regex-replaced Redditstatic)
+                    // Pattern: `.../avatar/${user.username}` OR `.../avatar_default...?user=${user.username}`
+                    if (node.quasis.length === 2 && node.expressions.length === 1) {
                         const prefix = node.quasis[0].value.raw;
-                        if (prefix.includes('images.websim.ai/avatar/') || prefix.includes('images.websim.com/avatar/')) {
-                            // If it looks like an avatar URL construction, replace the whole node with a safe fallback or dynamic lookup
-                            // If we can identify the user object, great, otherwise use current user or default
-                            
-                            // Strategy: If it has expressions, it's likely dynamic. 
-                            // We replace the whole template literal with a safe Reddit Avatar string.
-                            // However, we want to try to use the user's avatar if possible.
-                            
-                            if (node.expressions.length === 1) {
-                                const expr = node.expressions[0];
-                                // If `user.username` or `post.username`
-                                if (expr.type === 'MemberExpression' && expr.property.name === 'username') {
-                                    const objectCode = code.slice(expr.object.start, expr.object.end);
-                                    const replacement = `(${objectCode}.avatar_url || "https://www.redditstatic.com/avatars/avatar_default_02_FF4500.png")`;
-                                    magic.overwrite(node.start, node.end, replacement);
-                                    hasChanges = true;
-                                    return;
-                                }
+                        const isWebSim = prefix.includes('images.websim.ai/avatar/') || prefix.includes('images.websim.com/avatar/');
+                        const isSwapped = prefix.includes('redditstatic.com/avatars/') && prefix.includes('?user=');
+                        
+                        if (isWebSim || isSwapped) {
+                            const expr = node.expressions[0];
+                            // Check if expression is accessing a 'username' property (e.g. post.username)
+                            if (expr.type === 'MemberExpression' && expr.property.type === 'Identifier' && expr.property.name === 'username') {
+                                // Extract the object part (e.g. "post")
+                                const objectCode = code.slice(expr.object.start, expr.object.end);
+                                // Replace the entire template literal with the avatar_url property
+                                const replacement = `(${objectCode}.avatar_url || "https://www.redditstatic.com/avatars/avatar_default_02_FF4500.png")`;
+                                magic.overwrite(node.start, node.end, replacement);
+                                hasChanges = true;
                             }
-                            
-                            // Fallback for simple replacements or complex strings
-                            magic.overwrite(node.start, node.end, '"https://www.redditstatic.com/avatars/avatar_default_02_FF4500.png"');
-                            hasChanges = true;
                         }
                     }
                 }
@@ -265,6 +252,11 @@ export class AssetAnalyzer {
 
         } catch (e) {
             // Regex Fallback for JSX or syntax errors (Acorn fails on JSX)
+            // Matches:
+            // 1. import ... from "..."
+            // 2. import "..."
+            // 3. export ... from "..."
+            // 4. import("...") (dynamic)
             const importRegex = /(import\s+(?:[\w\s{},*]+)\s+from\s+['"])([^'"]+)(['"])|(import\s+['"])([^'"]+)(['"])|(from\s+['"])([^'"]+)(['"])|(import\s*\(\s*['"])([^'"]+)(['"]\s*\))/g;
             let match;
             const originalCode = code; 
@@ -282,14 +274,6 @@ export class AssetAnalyzer {
                         hasChanges = true;
                     }
                 }
-            }
-
-            // Identity Hotswap Fallback (Regex based for JSX files)
-            const avatarRegex = /(["'])(https:\/\/images\.websim\.(ai|com)\/avatar\/)\1/g;
-            let avatarMatch;
-            while ((avatarMatch = avatarRegex.exec(originalCode)) !== null) {
-                magic.overwrite(avatarMatch.index, avatarMatch.index + avatarMatch[0].length, '(window._currentUser?.avatar_url || "https://www.redditstatic.com/avatars/avatar_default_02_FF4500.png")');
-                hasChanges = true;
             }
         }
 

@@ -119,14 +119,10 @@ export const webAudioPolyfill = `
     const unlockEvents = ['click', 'touchstart', 'keydown', 'mousedown'];
     const unlockFn = () => {
         if (unlocked) return;
-        
-        // Resume AudioContexts on interaction
         unlocked = true;
         console.log("[Audio] Unlocking Audio Contexts...");
         contexts.forEach(ctx => {
-            if (ctx.state === 'suspended') {
-                ctx.resume().catch(e => console.warn(e));
-            }
+            if (ctx.state === 'suspended') ctx.resume().catch(e => console.warn(e));
         });
         unlockEvents.forEach(e => window.removeEventListener(e, unlockFn));
     };
@@ -135,17 +131,13 @@ export const webAudioPolyfill = `
     // 4. Visibility Handling (Reddit Rule: Mute when hidden)
     document.addEventListener('visibilitychange', () => {
         if (document.hidden) {
-            // Mute
-            contexts.forEach(ctx => {
-                ctx.suspend().catch(() => {});
-            });
+            console.log("[Audio] App hidden, suspending...");
+            contexts.forEach(ctx => ctx.suspend().catch(() => {}));
         } else {
-            // Resume only if already unlocked by user
+            console.log("[Audio] App visible, resuming...");
             if (unlocked) {
                 contexts.forEach(ctx => {
-                    if (ctx.state === 'suspended') {
-                        ctx.resume().catch(() => {});
-                    }
+                    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
                 });
             }
         }
@@ -439,28 +431,24 @@ export const websimStubsJs = `
                     await new Promise(r => setTimeout(r, 100));
                     tries++;
                 }
-                // Fallback to Guest if no identity received
                 return _currentUser || {
                     id: 'guest', username: 'Guest', avatar_url: 'https://www.redditstatic.com/avatars/avatar_default_02_FF4500.png'
                 };
             },
             getProject: async () => ({ id: 'local', title: 'Reddit Game' }),
             collection: (name) => {
+                // Return safe stubs to prevent crashes before hydration
                 return window.websimSocketInstance ? window.websimSocketInstance.collection(name) : {
-                    subscribe: () => {}, getList: () => [], create: async () => {}, update: async () => {}, delete: async () => {}, filter: () => ({ subscribe: () => {}, getList: () => [] })
+                    subscribe: () => {}, 
+                    getList: () => [], 
+                    create: async () => {}, 
+                    update: async () => {}, 
+                    delete: async () => {}, 
+                    filter: () => ({ subscribe: () => {}, getList: () => [] })
                 };
             },
-            // [Devvit] Proper handling of uploads:
-            // Dynamic uploads are transient in Devvit Webview. 
-            // We return a Blob URL for display, but note that 'fetch(blobUrl)' will fail due to CSP.
             upload: async (blob) => {
-                try { 
-                    // Create object URL for <img> or <audio> src
-                    return URL.createObjectURL(blob); 
-                } catch(e) { 
-                    console.warn('[WebSim] Upload stub failed:', e);
-                    return ''; 
-                }
+                try { return URL.createObjectURL(blob); } catch(e) { return ''; }
             }
         };
     }
