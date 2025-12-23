@@ -1,6 +1,6 @@
-import * as acorn from 'https://esm.sh/acorn@8.11.3';
-import { simple as walkSimple } from 'https://esm.sh/acorn-walk@8.3.2';
-import MagicString from 'https://esm.sh/magic-string@0.30.5';
+import * as acorn from 'acorn';
+import { simple as walkSimple } from 'acorn-walk';
+import MagicString from 'magic-string';
 
 // Helper: Clean Filename
 export const cleanName = (name) => {
